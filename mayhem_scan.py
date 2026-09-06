@@ -45,6 +45,27 @@ def _run(command: list[str]) -> int:
         raise
 
 
+def _json_reports(output_dir: Path) -> set[Path]:
+    """MayheM-Sec Added: snapshot upstream JSON reports, excluding enrichment sidecars."""
+    if not output_dir.exists():
+        return set()
+    return {
+        p.resolve()
+        for p in output_dir.glob("blackport_*.json")
+        if not p.name.endswith(".mayhem.json")
+    }
+
+
+def _enrich_new_reports(before: set[Path], output_dir: Path, enabled: bool) -> None:
+    if not enabled:
+        return
+    after = _json_reports(output_dir)
+    for report in sorted(after - before):
+        code = _run([sys.executable, str(ROOT / "report_enricher.py"), str(report)])
+        if code != 0:
+            print(f"[MayheM-Sec Added] Intelligence enrichment failed for {report.name}.")
+
+
 def tcp_command(args: argparse.Namespace) -> list[str]:
     command = [
         sys.executable,
@@ -79,6 +100,17 @@ def udp_command(args: argparse.Namespace) -> list[str]:
     return command
 
 
+def run_tcp(args: argparse.Namespace) -> int:
+    """MayheM-Sec Added: run upstream TCP/SYN and enrich only reports created by this run."""
+    output_dir = Path(args.output_dir).expanduser().resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    before = _json_reports(output_dir)
+    code = _run(tcp_command(args))
+    if code == 0:
+        _enrich_new_reports(before, output_dir, enabled=not args.no_intel)
+    return code
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="BlackPort unified scanner - MayheM-Sec Added")
     parser.add_argument("target", help="Target IP, hostname, or CIDR accepted by the selected scanner")
@@ -91,10 +123,11 @@ def main() -> None:
     parser.add_argument("--udp-workers", type=int, default=80)
     parser.add_argument("--output-dir", default="reports")
     parser.add_argument("--pdf", action="store_true")
+    parser.add_argument("--no-intel", action="store_true", help="Skip MayheM-Sec KEV/EPSS report enrichment")
     args = parser.parse_args()
 
     if args.mode in {"tcp", "syn"}:
-        raise SystemExit(_run(tcp_command(args)))
+        raise SystemExit(run_tcp(args))
 
     if args.mode == "udp":
         raise SystemExit(_run(udp_command(args)))
@@ -103,7 +136,7 @@ def main() -> None:
     print("[MayheM-Sec Added] Mixed scan: starting TCP phase")
     tcp_args = argparse.Namespace(**vars(args))
     tcp_args.mode = "tcp"
-    tcp_code = _run(tcp_command(tcp_args))
+    tcp_code = run_tcp(tcp_args)
     if tcp_code != 0:
         print(f"[MayheM-Sec Added] TCP phase exited with code {tcp_code}; UDP phase will still run.")
 
