@@ -1,3 +1,13 @@
+<div align="center">
+
+<img src="https://raw.githubusercontent.com/jsquaresec/jsquaresec/main/assets/j2sec-banner.svg" alt="J2SEC banner" width="100%" />
+
+<br>
+
+<img src="https://raw.githubusercontent.com/jsquaresec/jsquaresec/main/assets/j2sec-logo.svg" alt="J2SEC logo" width="110" />
+
+</div>
+
 # BlackPort
 
 BlackPort is a network security scanner for authorized assessment work. It combines port discovery, service fingerprinting, vulnerability correlation, verification plugins, reporting, UDP support, and a local browser-based GUI.
