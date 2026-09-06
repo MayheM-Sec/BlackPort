@@ -211,6 +211,20 @@ BlackPort was originally created by **Matthew Valdez** (`mkingv92`). This fork p
 [![Evolution Gaming](https://img.shields.io/badge/Discord-Evolution%20Gaming-5865F2?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/rjf9ZYMARN)
 [![Website](https://img.shields.io/badge/Web-onlythedemons.com-168BFF?style=for-the-badge&logo=googlechrome&logoColor=white)](https://onlythedemons.com)
 
+## Certifications & Badges
+
+### Introduction to Cyber Security: Stay Safe Online
+**The Open University / OpenLearn** • Issued September 2026  
+[![Verify Credential](https://img.shields.io/badge/Verify-Credential-168BFF?style=for-the-badge&logo=openbadges&logoColor=white)](https://www.open.edu/openlearn/badges/badge.php?hash=3f3aaed522c2cc2d8d04c733dabbdee7f154f51e)
+
+### Cisco Networking
+**Cisco** • Issued September 2026  
+[![Verify on Credly](https://img.shields.io/badge/Verify-Credly-168BFF?style=for-the-badge&logo=credly&logoColor=white)](https://www.credly.com/badges/5f247425-d38a-4497-bbb6-126668af27fc/public_url)
+
+### Python Coding 1
+**Cisco** • Issued September 2026  
+[![Verify on Credly](https://img.shields.io/badge/Verify-Credly-168BFF?style=for-the-badge&logo=credly&logoColor=white)](https://www.credly.com/badges/6b3e909b-45d8-44f4-8a31-c878bcbd7495/public_url)
+
 ## Responsible Use
 
 BlackPort is intended for legitimate administration, lab work, and authorized security assessment. Network scanning and active verification can affect remote systems and may be restricted by law, policy, contracts, or provider terms.
