@@ -4,8 +4,8 @@ MayheM-Sec Added
 UDP scanning engine for BlackPort.
 
 This module performs non-destructive UDP discovery with protocol-aware probes,
-retries, state classification, and JSON-friendly results. It is intended for
-authorized security assessment only.
+retries, conservative state classification, and JSON reporting. It is intended
+for authorized security assessment only.
 """
 
 from __future__ import annotations
@@ -17,36 +17,19 @@ import socket
 import struct
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
+from pathlib import Path
 
 
 # MayheM-Sec Added: common UDP service names used in reports and the GUI.
 UDP_SERVICES = {
-    53: "DNS",
-    67: "DHCP Server",
-    68: "DHCP Client",
-    69: "TFTP",
-    88: "Kerberos",
-    111: "RPCbind",
-    123: "NTP",
-    137: "NetBIOS Name Service",
-    138: "NetBIOS Datagram",
-    161: "SNMP",
-    162: "SNMP Trap",
-    389: "LDAP",
-    500: "IKE/IPsec",
-    514: "Syslog",
-    520: "RIP",
-    623: "IPMI/RMCP",
-    1434: "MS SQL Browser",
-    1701: "L2TP",
-    1812: "RADIUS Auth",
-    1813: "RADIUS Accounting",
-    1900: "SSDP/UPnP",
-    4500: "IPsec NAT-T",
-    4789: "VXLAN",
-    5353: "mDNS",
-    5355: "LLMNR",
-    11211: "Memcached",
+    53: "DNS", 67: "DHCP Server", 68: "DHCP Client", 69: "TFTP",
+    88: "Kerberos", 111: "RPCbind", 123: "NTP", 137: "NetBIOS Name Service",
+    138: "NetBIOS Datagram", 161: "SNMP", 162: "SNMP Trap", 389: "LDAP",
+    500: "IKE/IPsec", 514: "Syslog", 520: "RIP", 623: "IPMI/RMCP",
+    1434: "MS SQL Browser", 1701: "L2TP", 1812: "RADIUS Auth",
+    1813: "RADIUS Accounting", 1900: "SSDP/UPnP", 4500: "IPsec NAT-T",
+    4789: "VXLAN", 5353: "mDNS", 5355: "LLMNR", 11211: "Memcached",
 }
 
 # MayheM-Sec Added: practical UDP profiles. Full means 1-65535 and is explicit.
@@ -68,7 +51,6 @@ TOP_100_UDP = sorted(set(TOP_50_UDP + [
 
 
 def _dns_probe() -> bytes:
-    # MayheM-Sec Added: standard DNS query for the root NS set.
     transaction_id = 0x4242
     flags = 0x0100
     header = struct.pack("!HHHHHH", transaction_id, flags, 1, 0, 0, 0)
@@ -77,7 +59,6 @@ def _dns_probe() -> bytes:
 
 
 def _ntp_probe() -> bytes:
-    # MayheM-Sec Added: ordinary NTP client request, version 4, mode 3.
     return bytes([0x23]) + (b"\x00" * 47)
 
 
@@ -92,7 +73,6 @@ def _ssdp_probe() -> bytes:
 
 
 def _mdns_probe() -> bytes:
-    # MayheM-Sec Added: DNS-style query for _services._dns-sd._udp.local PTR.
     name = b"\x09_services\x07_dns-sd\x04_udp\x05local\x00"
     return struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0) + name + struct.pack("!HH", 12, 1)
 
@@ -121,6 +101,7 @@ class UDPScanner:
     """MayheM-Sec Added: concurrent UDP discovery with conservative state labels."""
 
     def __init__(self, target: str, timeout: float = 1.0, retries: int = 2, workers: int = 80):
+        self.target_name = target
         self.target = socket.gethostbyname(target)
         self.timeout = max(0.1, float(timeout))
         self.retries = max(1, int(retries))
@@ -132,7 +113,6 @@ class UDPScanner:
     def scan_port(self, port: int) -> dict:
         service = UDP_SERVICES.get(port, "Unknown")
         payload = self._probe_payload(port)
-        evidence = None
         latency_ms = None
 
         for attempt in range(1, self.retries + 1):
@@ -144,44 +124,28 @@ class UDPScanner:
                 sock.send(payload)
                 data = sock.recv(4096)
                 latency_ms = round((time.perf_counter() - started) * 1000, 2)
-                evidence = data[:160].hex()
                 return {
-                    "port": port,
-                    "protocol": "udp",
-                    "state": "open",
-                    "service": service,
-                    "confidence": 100,
-                    "attempts": attempt,
-                    "latency_ms": latency_ms,
-                    "response_bytes": len(data),
-                    "evidence_hex": evidence,
+                    "port": port, "protocol": "udp", "state": "open",
+                    "service": service, "confidence": 100, "attempts": attempt,
+                    "latency_ms": latency_ms, "response_bytes": len(data),
+                    "evidence_hex": data[:160].hex(),
                     "probe": "protocol-aware" if port in UDP_PROBES else "generic",
                 }
             except ConnectionRefusedError:
                 return {
-                    "port": port,
-                    "protocol": "udp",
-                    "state": "closed",
-                    "service": service,
-                    "confidence": 95,
-                    "attempts": attempt,
+                    "port": port, "protocol": "udp", "state": "closed",
+                    "service": service, "confidence": 95, "attempts": attempt,
                     "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-                    "response_bytes": 0,
-                    "evidence_hex": None,
+                    "response_bytes": 0, "evidence_hex": None,
                     "probe": "protocol-aware" if port in UDP_PROBES else "generic",
                 }
             except OSError as exc:
                 if getattr(exc, "errno", None) == errno.ECONNREFUSED:
                     return {
-                        "port": port,
-                        "protocol": "udp",
-                        "state": "closed",
-                        "service": service,
-                        "confidence": 95,
-                        "attempts": attempt,
+                        "port": port, "protocol": "udp", "state": "closed",
+                        "service": service, "confidence": 95, "attempts": attempt,
                         "latency_ms": round((time.perf_counter() - started) * 1000, 2),
-                        "response_bytes": 0,
-                        "evidence_hex": None,
+                        "response_bytes": 0, "evidence_hex": None,
                         "probe": "protocol-aware" if port in UDP_PROBES else "generic",
                     }
             except socket.timeout:
@@ -189,22 +153,16 @@ class UDPScanner:
             finally:
                 sock.close()
 
-        # MayheM-Sec Added: no UDP response cannot prove that a port is open.
+        # MayheM-Sec Added: silence is ambiguous for UDP and is never called open.
         return {
-            "port": port,
-            "protocol": "udp",
-            "state": "open|filtered",
-            "service": service,
-            "confidence": 35,
-            "attempts": self.retries,
-            "latency_ms": latency_ms,
-            "response_bytes": 0,
-            "evidence_hex": evidence,
+            "port": port, "protocol": "udp", "state": "open|filtered",
+            "service": service, "confidence": 35, "attempts": self.retries,
+            "latency_ms": latency_ms, "response_bytes": 0, "evidence_hex": None,
             "probe": "protocol-aware" if port in UDP_PROBES else "generic",
         }
 
     def scan(self, ports: list[int], include_closed: bool = False, show_progress: bool = True) -> list[dict]:
-        ports = sorted({p for p in ports if 1 <= int(p) <= 65535})
+        ports = sorted({int(p) for p in ports if 1 <= int(p) <= 65535})
         results: list[dict] = []
         total = len(ports)
         done = 0
@@ -241,6 +199,27 @@ def resolve_ports(args: argparse.Namespace) -> list[int]:
     return TOP_25_UDP
 
 
+def _safe_target_name(target: str) -> str:
+    return "".join(ch if ch.isalnum() or ch in ".-_" else "_" for ch in target)
+
+
+def write_json_report(target: str, duration: float, results: list[dict], output_dir: str) -> Path:
+    """MayheM-Sec Added: persist UDP findings alongside BlackPort reports."""
+    directory = Path(output_dir).expanduser()
+    directory.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = directory / f"blackport_{_safe_target_name(target)}_{stamp}_udp.json"
+    payload = {
+        "target": target,
+        "protocol": "udp",
+        "duration": duration,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "results": results,
+    }
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="BlackPort UDP scanner - MayheM-Sec Added")
     parser.add_argument("target", help="Target IP or hostname")
@@ -255,6 +234,7 @@ def main() -> None:
     parser.add_argument("--retries", type=int, default=2)
     parser.add_argument("--workers", type=int, default=80)
     parser.add_argument("--include-closed", action="store_true")
+    parser.add_argument("--output-dir", default="reports")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -263,17 +243,16 @@ def main() -> None:
     started = time.time()
     results = scanner.scan(ports, include_closed=args.include_closed, show_progress=not args.json)
     duration = round(time.time() - started, 2)
+    report = write_json_report(args.target, duration, results, args.output_dir)
 
     if args.json:
-        print(json.dumps({"target": args.target, "protocol": "udp", "duration": duration, "results": results}, indent=2))
+        print(json.dumps({"target": args.target, "protocol": "udp", "duration": duration, "report": str(report), "results": results}, indent=2))
         return
 
     print(f"\nUDP scan complete: {args.target} in {duration}s")
     for result in results:
-        print(
-            f"{result['port']:>5}/udp  {result['state']:<13} "
-            f"{result['service']:<24} confidence={result['confidence']}%"
-        )
+        print(f"{result['port']:>5}/udp  {result['state']:<13} {result['service']:<24} confidence={result['confidence']}%")
+    print(f"[MayheM-Sec Added] UDP report: {report}")
 
 
 if __name__ == "__main__":
