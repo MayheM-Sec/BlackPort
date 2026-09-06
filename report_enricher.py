@@ -2,8 +2,8 @@
 MayheM-Sec Added
 
 Post-process BlackPort JSON reports with MayheM-Sec threat intelligence,
-confidence scoring, and risk prioritization. The original upstream fields are
-preserved and new data is stored under mayhem_sec.
+confidence scoring, TLS posture, and risk prioritization. The original upstream
+fields are preserved and new data is stored under mayhem_sec.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from pathlib import Path
 
 from blackport.risk_engine_v2 import risk_score
 from blackport.threat_intel import enrich_many
+from blackport.tls_analysis import analyze_tls
 
 
 def _collect_cves(result: dict) -> list[str]:
@@ -56,10 +57,12 @@ def enrich_report(path: Path) -> Path:
         if not isinstance(result, dict):
             enriched.append(result)
             continue
+
         result_intel = [intel[cve] for cve in cves if cve in intel]
         mayhem = {
             "cves": cves,
             "intelligence": result_intel,
+            "tls": analyze_tls(result.get("tls")),
         }
         mayhem["risk"] = risk_score(result, result_intel)
         enriched.append({**result, "mayhem_sec": mayhem})
