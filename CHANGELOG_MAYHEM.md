@@ -9,7 +9,11 @@ This file tracks changes introduced by the MayheM-Sec fork. It does not replace 
 - **MayheM-Sec Added:** local browser-based BlackPort GUI bound to `127.0.0.1` by default.
 - **MayheM-Sec Added:** GUI start, stop, and application shutdown controls.
 - **MayheM-Sec Added:** process-group cleanup so closing the GUI also terminates active scan children.
-- **MayheM-Sec Added:** GUI scan history and local JSON report viewer.
+- **MayheM-Sec Added:** GUI scan history and polished local report cards rather than raw JSON as the primary viewing experience.
+- **MayheM-Sec Added:** TCP finding cards with service, product/version, severity, risk score, confidence, CVEs, KEV/EPSS intelligence, TLS posture, passive web-technology hints, and collected evidence where available.
+- **MayheM-Sec Added:** UDP finding cards with state, confidence, probe type, retries, latency, response size, and response evidence where available.
+- **MayheM-Sec Added:** report filters for TCP severities and UDP states.
+- **MayheM-Sec Added:** report-history de-duplication that prefers `.mayhem.json` enriched sidecars when both raw and enriched versions exist.
 - **MayheM-Sec Added:** dedicated UDP scanner with conservative UDP state handling.
 - **MayheM-Sec Added:** UDP Top 25, Top 50, Top 100, and full-range profiles.
 - **MayheM-Sec Added:** protocol-aware UDP probes for DNS, NTP, SSDP/UPnP, mDNS, LLMNR, and Memcached.
@@ -26,6 +30,7 @@ This file tracks changes introduced by the MayheM-Sec fork. It does not replace 
 - **MayheM-Sec Added:** replaced the legacy `FastScan Pro` Tkinter launcher with a compatibility entry point for the local BlackPort browser interface.
 - **MayheM-Sec Added:** rewrote the fork README to clearly separate upstream functionality from MayheM-Sec additions and remove overly promotional wording.
 - **MayheM-Sec Added:** fork-specific orchestration now keeps upstream TCP/SYN behavior in `main.py` rather than duplicating the original scanner.
+- **MayheM-Sec Added:** report-history risk counts now prefer MayheM-Sec enriched severity when enrichment is present.
 
 ### Known limitations before release testing
 
