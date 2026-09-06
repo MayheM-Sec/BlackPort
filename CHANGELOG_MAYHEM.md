@@ -33,13 +33,27 @@ This file tracks changes introduced by the MayheM-Sec fork. It does not replace 
 - **MayheM-Sec Added:** rewrote the fork README to clearly separate upstream functionality from MayheM-Sec additions and remove overly promotional wording.
 - **MayheM-Sec Added:** fork-specific orchestration keeps upstream TCP/SYN behavior in `main.py` rather than duplicating the original scanner.
 - **MayheM-Sec Added:** report-history risk counts prefer MayheM-Sec enriched severity when enrichment is present.
+- **MayheM-Sec Added:** added the missing `packaging` runtime dependency required by the existing upstream `exploit_indicators.py` import.
 
-### Known limitations before release testing
+### Validation
+
+The MayheM-Sec work path completed its automated end-to-end validation on GitHub Actions. The successful run covered:
+
+- dependency installation
+- Python compile checks for MayheM-Sec modules
+- eight fork-specific unit tests
+- CLI entry-point help checks
+- localhost UDP smoke scanning and report creation
+- localhost Safe TCP smoke scanning
+- local GUI startup, status endpoint, shutdown endpoint, and clean process exit
+
+### Known limitations
 
 - UDP and mixed modes currently target a single IP address or hostname; UDP CIDR orchestration is not enabled yet.
 - UDP silence is intentionally classified as `open|filtered`, not as a confirmed open port.
 - Full UDP scans are expected to take substantially longer than curated UDP profiles.
-- The work path has not yet received its final end-to-end test pass.
+- SYN behavior still depends on platform raw-socket privileges and should receive a real authorized target test before a release is tagged.
+- Aggressive profile behavior intentionally preserves upstream active verification and should only be used within an explicitly authorized assessment scope.
 
 ## Attribution
 
