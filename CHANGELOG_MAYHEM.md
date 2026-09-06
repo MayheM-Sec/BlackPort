@@ -9,6 +9,7 @@ This file tracks changes introduced by the MayheM-Sec fork. It does not replace 
 - **MayheM-Sec Added:** local browser-based BlackPort GUI bound to `127.0.0.1` by default.
 - **MayheM-Sec Added:** GUI start, stop, and application shutdown controls.
 - **MayheM-Sec Added:** process-group cleanup so closing the GUI also terminates active scan children.
+- **MayheM-Sec Added:** GUI scan history and local JSON report viewer.
 - **MayheM-Sec Added:** dedicated UDP scanner with conservative UDP state handling.
 - **MayheM-Sec Added:** UDP Top 25, Top 50, Top 100, and full-range profiles.
 - **MayheM-Sec Added:** protocol-aware UDP probes for DNS, NTP, SSDP/UPnP, mDNS, LLMNR, and Memcached.
@@ -18,18 +19,20 @@ This file tracks changes introduced by the MayheM-Sec fork. It does not replace 
 - **MayheM-Sec Added:** confidence and second-generation MayheM-Sec risk scoring while preserving upstream risk fields.
 - **MayheM-Sec Added:** enriched `.mayhem.json` sidecar reports so upstream JSON remains unchanged.
 - **MayheM-Sec Added:** TLS posture analysis for expiry, hostname mismatch, self-signed certificates, weak ciphers, and legacy protocol support.
+- **MayheM-Sec Added:** passive web-technology hints derived from data BlackPort already collects.
 
 ### Changed
 
 - **MayheM-Sec Added:** replaced the legacy `FastScan Pro` Tkinter launcher with a compatibility entry point for the local BlackPort browser interface.
 - **MayheM-Sec Added:** rewrote the fork README to clearly separate upstream functionality from MayheM-Sec additions and remove overly promotional wording.
+- **MayheM-Sec Added:** fork-specific orchestration now keeps upstream TCP/SYN behavior in `main.py` rather than duplicating the original scanner.
 
 ### Known limitations before release testing
 
 - UDP and mixed modes currently target a single IP address or hostname; UDP CIDR orchestration is not enabled yet.
 - UDP silence is intentionally classified as `open|filtered`, not as a confirmed open port.
 - Full UDP scans are expected to take substantially longer than curated UDP profiles.
-- The GUI currently focuses on scan configuration and live output; richer report/history views remain planned.
+- The work path has not yet received its final end-to-end test pass.
 
 ## Attribution
 
