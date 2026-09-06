@@ -3,9 +3,10 @@ MayheM-Sec Added
 
 Unified BlackPort scan launcher for the MayheM-Sec fork.
 
-This wrapper keeps upstream TCP/SYN behavior in main.py and delegates UDP work
-to udp_scanner.py. Mixed mode runs both paths sequentially so the CLI and local
-GUI share one orchestration layer.
+This wrapper keeps upstream TCP/SYN behavior in main.py, applies MayheM-Sec
+assessment policy through assessment_runner.py, and delegates UDP work to
+udp_scanner.py. Mixed mode runs both paths sequentially so CLI and GUI share
+one orchestration layer.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ UDP_PROFILES = {
     "top-100": "--top-100",
     "full": "--full",
 }
+ASSESSMENT_PROFILES = {"safe", "verify", "aggressive"}
 
 
 def _run(command: list[str]) -> int:
@@ -46,7 +48,7 @@ def _run(command: list[str]) -> int:
 
 
 def _json_reports(output_dir: Path) -> set[Path]:
-    """MayheM-Sec Added: snapshot upstream JSON reports, excluding enrichment sidecars."""
+    """MayheM-Sec Added: snapshot upstream JSON reports, excluding fork sidecars."""
     if not output_dir.exists():
         return set()
     return {
@@ -67,9 +69,13 @@ def _enrich_new_reports(before: set[Path], output_dir: Path, enabled: bool) -> N
 
 
 def tcp_command(args: argparse.Namespace) -> list[str]:
+    # MayheM-Sec Added: assessment_runner applies policy, then forwards the normal
+    # upstream BlackPort arguments without changing main.py.
     command = [
         sys.executable,
-        str(ROOT / "main.py"),
+        str(ROOT / "assessment_runner.py"),
+        "--profile", args.assessment_profile,
+        "--",
         args.target,
         TCP_PROFILES[args.tcp_profile],
         "--timeout", str(args.timeout),
@@ -96,7 +102,7 @@ def udp_command(args: argparse.Namespace) -> list[str]:
 
 
 def run_tcp(args: argparse.Namespace) -> int:
-    """MayheM-Sec Added: run upstream TCP/SYN and enrich only reports created by this run."""
+    """MayheM-Sec Added: run TCP/SYN and enrich only reports created by this run."""
     output_dir = Path(args.output_dir).expanduser().resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     before = _json_reports(output_dir)
@@ -110,6 +116,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="BlackPort unified scanner - MayheM-Sec Added")
     parser.add_argument("target", help="Target IP or hostname; CIDR is supported by TCP/SYN modes")
     parser.add_argument("--mode", choices=["tcp", "syn", "udp", "mixed"], default="tcp")
+    parser.add_argument("--assessment-profile", choices=sorted(ASSESSMENT_PROFILES), default="safe",
+                        help="TCP/SYN plugin policy: safe, verify, or aggressive (default: safe)")
     parser.add_argument("--tcp-profile", choices=TCP_PROFILES, default="top-100")
     parser.add_argument("--udp-profile", choices=UDP_PROFILES, default="top-25")
     parser.add_argument("--timeout", type=float, default=1.0, help="TCP/SYN timeout")
@@ -131,7 +139,6 @@ def main() -> None:
     if args.mode == "udp":
         raise SystemExit(_run(udp_command(args)))
 
-    # MayheM-Sec Added: mixed mode preserves upstream TCP reports and then adds UDP discovery.
     print("[MayheM-Sec Added] Mixed scan: starting TCP phase")
     tcp_args = argparse.Namespace(**vars(args))
     tcp_args.mode = "tcp"
