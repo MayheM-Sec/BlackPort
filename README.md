@@ -1,105 +1,140 @@
 # BlackPort
 
-BlackPort is a network security scanner for authorized assessment work. It combines port discovery, service fingerprinting, vulnerability correlation, active verification plugins, scan comparison, and reporting in a single Python project.
+BlackPort is a network security scanner for authorized assessment work. It combines port discovery, service fingerprinting, vulnerability correlation, verification plugins, and reporting in one Python project.
 
-This repository is the **MayheM-Sec fork** of the original BlackPort project by Matthew Valdez (`mkingv92`). Original upstream work remains credited to its author. Fork-specific code and modifications are identified as **MayheM-Sec Added** where practical and are documented separately below.
+This repository is the **MayheM-Sec fork** of the original BlackPort project by Matthew Valdez (`mkingv92`). The original project and its author remain credited. Changes introduced by this fork are identified as **MayheM-Sec Added** where practical and are tracked separately in `CHANGELOG_MAYHEM.md`.
 
 > Use BlackPort only on systems and networks you own or have explicit permission to test.
 
-## Capabilities
+## What this fork adds
 
-The upstream project provides the core TCP/SYN assessment workflow, including:
+The upstream scanner remains the foundation for TCP and SYN assessment. The MayheM-Sec fork adds a dedicated UDP path, a local GUI, explicit assessment policies, and an additional intelligence layer without replacing the original scanner implementation.
 
-- TCP connect scanning
-- SYN scanning with TCP fallback
-- CIDR/network discovery
-- curated and full-range TCP profiles
-- service and banner fingerprinting
-- OS detection support
-- CVE correlation
-- plugin-based verification checks
-- scan comparison/diff support
-- JSON, CSV, HTML, and PDF reports
-- multi-host reporting
+Current MayheM-Sec work includes:
 
-The MayheM-Sec fork extends that base with a local browser interface, a dedicated UDP engine, mixed TCP/UDP orchestration, and additional vulnerability prioritization.
+- local browser-based GUI bound to `127.0.0.1`
+- TCP connect, SYN, UDP, and mixed scan modes
+- Safe, Verify, and Aggressive assessment profiles
+- dedicated UDP scanner with conservative state handling
+- UDP Top 25, Top 50, Top 100, and full-range profiles
+- protocol-aware UDP probes for common services
+- local scan history and JSON report viewing in the GUI
+- CISA Known Exploited Vulnerabilities correlation
+- FIRST EPSS lookups with local caching
+- separate MayheM-Sec confidence and risk scoring
+- TLS posture interpretation from data BlackPort already collects
+- passive web-technology hints from existing banners and titles
+- enriched `.mayhem.json` report sidecars that leave upstream JSON unchanged
 
-## MayheM-Sec additions
+## Local GUI
 
-### Local graphical interface
+The GUI runs entirely on the computer where BlackPort is started. It does not require a VPS.
 
-**MayheM-Sec Added**
-
-BlackPort can run as a local browser application without a VPS or externally hosted service.
+Start it with:
 
 ```bash
 python gui.py
 ```
 
-The launcher opens:
+BlackPort opens the interface at:
 
 ```text
 http://127.0.0.1:8787
 ```
 
-The server binds only to `127.0.0.1` by default. It is not exposed to the LAN or Internet.
+The listener is bound to localhost only. It is not exposed to the LAN or Internet by default.
 
-The current interface supports:
+The current interface includes:
 
-- IP address, hostname, or supported CIDR target entry
-- TCP connect scanning
-- SYN scanning
-- UDP scanning
-- mixed TCP + UDP scanning
-- TCP Top 100, Top 500, Top 1000, and full profiles
-- UDP Top 25, Top 50, Top 100, and full profiles
+- target entry for an IP address, hostname, or supported CIDR target
+- assessment profile selection
+- TCP, SYN, UDP, and mixed modes
+- TCP and UDP port presets
+- UDP retry and timeout controls
 - live scanner output
-- scan start/stop controls
-- automatic report output to `reports/`
-- explicit application shutdown
-- child-process cleanup when BlackPort closes
+- scan start and stop controls
+- local scan history
+- local JSON report viewer
+- explicit BlackPort shutdown
 
-When the GUI is shut down, BlackPort stops an active scan process group, closes the localhost HTTP server, and releases the listening port.
+Closing BlackPort stops the active scan process group, closes the local HTTP listener, and releases the GUI port. If the browser tab remains open afterward, it will simply lose its connection to the local service.
 
-Use another local GUI port with:
+Use another local port if needed:
 
 ```bash
 python gui.py --port 9000
 ```
 
-Start without automatically opening a browser with:
+Start the GUI without opening a browser automatically:
 
 ```bash
 python gui.py --no-browser
 ```
 
-### UDP scanning
+## Assessment profiles
 
-**MayheM-Sec Added**
+The MayheM-Sec scan launcher separates discovery from the level of verification a user authorizes.
 
-UDP is implemented as a separate scanner rather than treating UDP like TCP.
+### Safe
+
+Safe is the default profile.
+
+It keeps the TCP/SYN discovery and fingerprinting path but disables verification plugins and the SMB post-sweep enumeration phase.
+
+```bash
+python mayhem_scan.py 192.168.1.10 --mode tcp --assessment-profile safe
+```
+
+### Verify
+
+Verify enables only plugins that have been explicitly reviewed as non-destructive in the MayheM-Sec policy layer.
+
+The initial reviewed set is intentionally conservative. It currently includes the Apache and SSH verification plugins.
+
+```bash
+python mayhem_scan.py 192.168.1.10 --mode tcp --assessment-profile verify
+```
+
+### Aggressive
+
+Aggressive preserves the upstream active verification plugin behavior.
+
+Some upstream plugins perform authentication checks, file reads, service interaction, or active exploit verification. Use this profile only when the assessment scope explicitly permits that level of testing.
+
+```bash
+python mayhem_scan.py 192.168.1.10 --mode tcp --assessment-profile aggressive
+```
+
+## UDP scanning
+
+UDP is implemented as its own scanner rather than treating it as a variation of TCP.
 
 The UDP engine provides:
 
-- conservative `open`, `closed`, and `open|filtered` state handling
-- retry support
-- configurable timeouts and worker counts
+- `open`, `closed`, and `open|filtered` states
+- configurable retries
+- configurable timeout and worker count
 - protocol-aware probes where implemented
 - common UDP service naming
-- JSON report persistence
+- persistent JSON reports
 - Top 25, Top 50, Top 100, and full-range profiles
 
-Protocol-aware probes currently include DNS, NTP, SSDP/UPnP, mDNS, LLMNR, and Memcached. Other UDP services use a generic discovery probe and are deliberately reported conservatively when no response is returned.
+A lack of response is not treated as proof that a UDP port is open. Silent ports are reported as `open|filtered` unless stronger evidence is available.
 
-Example:
+Protocol-aware probes currently include:
+
+- DNS
+- NTP
+- SSDP/UPnP
+- mDNS
+- LLMNR
+- Memcached
+
+Examples:
 
 ```bash
 python udp_scanner.py 192.168.1.10 --top-25
-```
-
-Broader UDP scan:
-
-```bash
+python udp_scanner.py 192.168.1.10 --top-50
 python udp_scanner.py 192.168.1.10 --top-100
 ```
 
@@ -109,15 +144,13 @@ A full UDP scan is explicit because it can take substantially longer:
 python udp_scanner.py 192.168.1.10 --full
 ```
 
-UDP results are written to the selected report directory using a filename ending in `_udp.json`.
+UDP reports are written to the selected report directory using filenames ending in `_udp.json`.
 
-At this stage, UDP and mixed modes accept a single IP address or hostname. CIDR UDP orchestration will be added only after host-discovery behavior is defined and tested for that path.
+UDP and mixed modes currently accept a single IP address or hostname. UDP CIDR orchestration is being kept out of the release path until its host-discovery behavior is defined and tested properly.
 
-### Unified MayheM-Sec scan launcher
+## Unified MayheM-Sec launcher
 
-**MayheM-Sec Added**
-
-`mayhem_scan.py` provides one entry point for the fork-specific scan modes while leaving upstream TCP/SYN implementation in `main.py`.
+`mayhem_scan.py` is the common entry point for fork-specific scan behavior. TCP and SYN still run through the upstream scanner; the wrapper applies the MayheM-Sec assessment policy and handles UDP/mixed orchestration.
 
 TCP:
 
@@ -143,39 +176,74 @@ Mixed TCP and UDP:
 python mayhem_scan.py 192.168.1.10 --mode mixed --tcp-profile top-100 --udp-profile top-25
 ```
 
-The GUI uses this same launcher so scan behavior is not duplicated in a separate interface-specific scanner.
+Choose an assessment policy explicitly:
 
-### Threat intelligence and risk enrichment
+```bash
+python mayhem_scan.py 192.168.1.10 --mode tcp --assessment-profile verify
+```
 
-**MayheM-Sec Added**
+The GUI uses this same launcher. There is no separate scanner implementation hidden behind the web interface.
 
-The fork includes an optional post-processing layer for BlackPort JSON reports. It preserves the original upstream report and writes an additional `.mayhem.json` sidecar containing MayheM-Sec fields.
+## Threat intelligence and prioritization
 
-Current enrichment includes:
+Successful TCP/SYN scans can be post-processed by the MayheM-Sec enrichment layer.
 
-- CISA Known Exploited Vulnerabilities correlation
-- FIRST EPSS lookups
-- cached intelligence data
+The enrichment layer adds:
+
+- CISA Known Exploited Vulnerabilities status
+- FIRST EPSS score and percentile
+- local threat-intelligence caching
 - confidence scoring based on collected evidence
-- a separate MayheM-Sec 0-10 risk score
+- separate MayheM-Sec 0-10 risk scoring
+- TLS posture findings
+- passive web-technology hints
 
-Network failures during intelligence lookup are treated as non-fatal and cached data is used when available.
+The original BlackPort JSON report is preserved. Enrichment is written to a separate file ending in `.mayhem.json`.
 
-To skip this enrichment when using the unified launcher:
+If an external intelligence source is unavailable, BlackPort continues without treating the lookup failure as a scan failure. Cached data is used when available.
+
+Disable MayheM-Sec intelligence enrichment with:
 
 ```bash
 python mayhem_scan.py 192.168.1.10 --mode tcp --no-intel
 ```
 
-### Attribution convention
+## TLS analysis
 
-Fork-specific changes use comments such as:
+The upstream project already collects certificate, cipher, and TLS-version data for relevant services. The MayheM-Sec layer interprets that existing data rather than repeating the network probe.
 
-```python
-# MayheM-Sec Added: description of the change
-```
+Current checks include:
 
-Larger MayheM-Sec files use a short header at the beginning of the file. Original upstream code is not relabeled as MayheM-Sec work.
+- expired certificates
+- certificates nearing expiration
+- hostname mismatch
+- self-signed certificates
+- weak negotiated ciphers
+- TLS 1.0 / TLS 1.1 support
+- broad downgrade surface where modern and legacy protocol versions coexist
+
+## Web technology hints
+
+MayheM-Sec web analysis is passive. It derives technology hints from banners and HTTP information BlackPort already collected rather than making additional exploit requests.
+
+Current patterns cover common technologies such as:
+
+- nginx
+- Apache HTTP Server
+- Microsoft IIS
+- OpenResty
+- Caddy
+- PHP
+- ASP.NET
+- Express
+- Cloudflare
+- WordPress
+- Drupal
+- Joomla
+- Tomcat
+- Jetty
+- Werkzeug
+- gunicorn
 
 ## Installation
 
@@ -185,13 +253,7 @@ Larger MayheM-Sec files use a short header at the beginning of the file. Origina
 - elevated privileges for raw SYN scanning
 - Linux, Windows, or macOS subject to platform networking restrictions
 
-Install dependencies:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-A virtual environment is recommended:
+A virtual environment is recommended.
 
 ```bash
 python -m venv .venv
@@ -211,7 +273,9 @@ Windows PowerShell:
 python -m pip install -r requirements.txt
 ```
 
-## Upstream command-line usage
+## Upstream command-line path
+
+The original TCP/SYN entry point remains available.
 
 Quick TCP scan:
 
@@ -243,13 +307,13 @@ Custom range:
 python main.py 192.168.1.10 1 1024
 ```
 
-SYN scanning generally requires raw packet privileges:
+SYN scan:
 
 ```bash
 sudo python main.py 192.168.1.10 --top-100 --syn
 ```
 
-Network scan:
+CIDR scan:
 
 ```bash
 python main.py 192.168.1.0/24 --top-100
@@ -261,76 +325,77 @@ Choose a report directory:
 python main.py 192.168.1.10 --top-100 --output-dir ./reports
 ```
 
-Generate PDF output as well:
+Generate PDF output:
 
 ```bash
 python main.py 192.168.1.10 --top-100 --pdf
 ```
 
-## Architecture
+## Project structure
 
-BlackPort is being kept modular so the CLI and GUI use the same scanner paths.
+The fork keeps MayheM-Sec orchestration separate from the upstream scanner where possible.
 
 ```text
-BlackPort
-├── Upstream TCP/SYN path
-│   ├── main.py
-│   ├── unified_scanner.py
-│   └── blackport/
-│
-└── MayheM-Sec extensions
-    ├── gui.py
-    ├── gui_server.py
-    ├── mayhem_scan.py
-    ├── udp_scanner.py
-    ├── report_enricher.py
-    ├── blackport/threat_intel.py
-    └── blackport/risk_engine_v2.py
+BlackPort/
+├── main.py                         upstream TCP/SYN entry point
+├── unified_scanner.py              upstream SYN/TCP discovery
+├── plugins/                        upstream verification plugins
+├── blackport/                      upstream core plus fork helper modules
+│   ├── threat_intel.py             MayheM-Sec Added
+│   ├── risk_engine_v2.py           MayheM-Sec Added
+│   ├── tls_analysis.py             MayheM-Sec Added
+│   ├── web_analysis.py             MayheM-Sec Added
+│   └── report_index.py             MayheM-Sec Added
+├── udp_scanner.py                  MayheM-Sec Added
+├── assessment_runner.py            MayheM-Sec Added
+├── mayhem_scan.py                  MayheM-Sec Added
+├── report_enricher.py              MayheM-Sec Added
+├── gui.py                          MayheM-Sec Added launcher
+├── gui_server_v4.py                MayheM-Sec Added current GUI layer
+└── CHANGELOG_MAYHEM.md             fork change history
 ```
 
-The intended scan flow is:
+The scan flow is intentionally straightforward:
 
-1. **Discovery** — TCP connect, SYN, UDP, or mixed scanning.
-2. **Fingerprinting** — service and banner identification where applicable.
-3. **Verification** — service-specific checks from the upstream plugin system.
-4. **Intelligence** — CVE correlation plus MayheM-Sec KEV/EPSS enrichment.
-5. **Prioritization** — upstream risk is preserved and MayheM-Sec risk/confidence is added separately.
-6. **Reporting** — upstream reports remain intact while fork-specific sidecars and UDP reports are stored separately.
+1. Discovery
+2. Fingerprinting
+3. Policy-controlled verification
+4. CVE and threat-intelligence correlation
+5. Risk/confidence prioritization
+6. Reporting and local history
 
-## Development direction
+## Attribution convention
 
-Planned work for the MayheM-Sec fork includes:
+Fork-specific changes use comments such as:
 
-- additional protocol-aware UDP probes
-- UDP CIDR orchestration after host discovery is defined
-- stronger TLS analysis
-- expanded HTTP/web technology fingerprinting
-- improved service fingerprint confidence
-- scan history and change tracking in the GUI
-- richer GUI result views beyond console output
-- plugin metadata and management
-- continued separation between detection and active verification
+```python
+# MayheM-Sec Added: description of the change
+```
 
-Features are being added in focused stages so each path can be tested independently before release.
+Larger MayheM-Sec files use a short header at the beginning of the file. Original upstream code is not relabeled as MayheM-Sec work.
 
 ## Contributing changes upstream
 
-MayheM-Sec changes can be proposed to the original BlackPort project through GitHub pull requests. The fork remains independent whether or not an upstream contribution is accepted.
+MayheM-Sec changes can be proposed to the original BlackPort repository through normal GitHub pull requests. The fork remains independent whether or not an upstream contribution is accepted.
 
-Focused pull requests are preferred for major features such as UDP support, GUI work, or vulnerability-intelligence improvements rather than combining unrelated changes into one review.
+Focused pull requests are preferred. UDP support, GUI work, assessment policy, and intelligence improvements should be reviewable independently rather than submitted as one unrelated bundle.
 
 ## Upstream project and attribution
 
 BlackPort was originally created by **Matthew Valdez** (`mkingv92`). This fork does not remove or replace that attribution.
 
-MayheM-Sec maintains this fork and documents its additions separately so users can distinguish upstream functionality from fork-specific work.
+MayheM-Sec maintains this fork and documents its additions separately so users can distinguish upstream work from fork-specific changes.
 
 ## License
 
 The upstream project identifies itself as MIT licensed. Review the repository license and upstream terms before redistributing modified builds.
 
+## Development status
+
+The current MayheM-Sec changes are being developed on the work path and have not yet received the final end-to-end test pass. They should not be treated as a release until that validation is complete.
+
 ## Responsible use
 
-BlackPort is intended for legitimate administration, lab work, and authorized security assessment. Network scanning and vulnerability verification can affect remote systems and may be restricted by law, policy, contracts, or provider terms.
+BlackPort is intended for legitimate administration, lab work, and authorized security assessment. Network scanning and active verification can affect remote systems and may be restricted by law, policy, contracts, or provider terms.
 
 Do not use BlackPort against systems you are not authorized to assess.
