@@ -52,7 +52,7 @@ def _json_reports(output_dir: Path) -> set[Path]:
     return {
         p.resolve()
         for p in output_dir.glob("blackport_*.json")
-        if not p.name.endswith(".mayhem.json")
+        if not p.name.endswith(".mayhem.json") and not p.name.endswith("_udp.json")
     }
 
 
@@ -72,10 +72,8 @@ def tcp_command(args: argparse.Namespace) -> list[str]:
         str(ROOT / "main.py"),
         args.target,
         TCP_PROFILES[args.tcp_profile],
-        "--timeout",
-        str(args.timeout),
-        "--output-dir",
-        str(Path(args.output_dir).expanduser()),
+        "--timeout", str(args.timeout),
+        "--output-dir", str(Path(args.output_dir).expanduser()),
     ]
     if args.mode == "syn":
         command.append("--syn")
@@ -85,19 +83,16 @@ def tcp_command(args: argparse.Namespace) -> list[str]:
 
 
 def udp_command(args: argparse.Namespace) -> list[str]:
-    command = [
+    return [
         sys.executable,
         str(ROOT / "udp_scanner.py"),
         args.target,
         UDP_PROFILES[args.udp_profile],
-        "--timeout",
-        str(args.udp_timeout),
-        "--retries",
-        str(args.udp_retries),
-        "--workers",
-        str(args.udp_workers),
+        "--timeout", str(args.udp_timeout),
+        "--retries", str(args.udp_retries),
+        "--workers", str(args.udp_workers),
+        "--output-dir", str(Path(args.output_dir).expanduser()),
     ]
-    return command
 
 
 def run_tcp(args: argparse.Namespace) -> int:
@@ -113,7 +108,7 @@ def run_tcp(args: argparse.Namespace) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="BlackPort unified scanner - MayheM-Sec Added")
-    parser.add_argument("target", help="Target IP, hostname, or CIDR accepted by the selected scanner")
+    parser.add_argument("target", help="Target IP or hostname; CIDR is supported by TCP/SYN modes")
     parser.add_argument("--mode", choices=["tcp", "syn", "udp", "mixed"], default="tcp")
     parser.add_argument("--tcp-profile", choices=TCP_PROFILES, default="top-100")
     parser.add_argument("--udp-profile", choices=UDP_PROFILES, default="top-25")
@@ -125,6 +120,10 @@ def main() -> None:
     parser.add_argument("--pdf", action="store_true")
     parser.add_argument("--no-intel", action="store_true", help="Skip MayheM-Sec KEV/EPSS report enrichment")
     args = parser.parse_args()
+
+    # MayheM-Sec Added: UDP CIDR support is deferred until host-discovery semantics are added.
+    if args.mode in {"udp", "mixed"} and "/" in args.target:
+        parser.error("UDP and mixed modes currently accept one IP address or hostname, not CIDR")
 
     if args.mode in {"tcp", "syn"}:
         raise SystemExit(run_tcp(args))
