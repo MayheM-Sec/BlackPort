@@ -3,8 +3,8 @@ MayheM-Sec Added
 
 Local-only browser interface for BlackPort.
 
-The server binds to 127.0.0.1 by default, launches the existing BlackPort
-CLI as a child process, and terminates any active scan when the GUI exits.
+The server binds to 127.0.0.1, launches the MayheM-Sec unified scan wrapper,
+and stops the complete child scan process group when the GUI exits.
 Use only on systems and networks you own or have explicit permission to test.
 """
 
@@ -31,14 +31,10 @@ DEFAULT_PORT = 8787
 ROOT = Path(__file__).resolve().parent
 REPORT_DIR = ROOT / "reports"
 
-# MayheM-Sec Added: GUI scan presets are intentionally allow-listed.
-PROFILES = {
-    "top-100": "--top-100",
-    "top-500": "--top-500",
-    "top-1000": "--top-1000",
-    "full": "--full",
-}
-MODES = {"tcp", "syn"}
+# MayheM-Sec Added: GUI choices are allow-listed before any subprocess starts.
+TCP_PROFILES = {"top-100", "top-500", "top-1000", "full"}
+UDP_PROFILES = {"top-25", "top-50", "top-100", "full"}
+MODES = {"tcp", "syn", "udp", "mixed"}
 HOST_RE = re.compile(r"^[A-Za-z0-9._:-]+(?:/[0-9]{1,3})?$")
 
 
@@ -51,7 +47,7 @@ class ScanState:
         self.started_at: float | None = None
         self.return_code: int | None = None
         self.command: list[str] = []
-        self.output: deque[str] = deque(maxlen=2500)
+        self.output: deque[str] = deque(maxlen=4000)
 
     def running(self) -> bool:
         with self.lock:
@@ -66,14 +62,21 @@ class ScanState:
             self.return_code = None
             self.started_at = time.time()
             self.command = command[:]
-            self.process = subprocess.Popen(
-                command,
+
+            # MayheM-Sec Added: isolate the scan in its own process group/session.
+            kwargs = dict(
                 cwd=str(ROOT),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 bufsize=1,
             )
+            if os.name == "nt":
+                kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+            else:
+                kwargs["start_new_session"] = True
+
+            self.process = subprocess.Popen(command, **kwargs)
             process = self.process
 
         threading.Thread(target=self._capture, args=(process,), daemon=True).start()
@@ -90,18 +93,29 @@ class ScanState:
     def stop(self) -> None:
         with self.lock:
             process = self.process
+
         if process is None or process.poll() is not None:
             return
 
-        process.terminate()
+        # MayheM-Sec Added: stop the complete scan tree, not only the wrapper.
         try:
-            process.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=2)
+            if os.name == "nt":
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                os.killpg(process.pid, signal.SIGTERM)
+            process.wait(timeout=4)
+        except (subprocess.TimeoutExpired, ProcessLookupError, PermissionError):
+            try:
+                if os.name == "nt":
+                    process.kill()
+                else:
+                    os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=2)
+            except Exception:
+                pass
 
         with self.lock:
-            self.return_code = process.returncode
+            self.return_code = process.poll()
 
     def snapshot(self) -> dict:
         with self.lock:
@@ -117,8 +131,6 @@ class ScanState:
 
 
 STATE = ScanState()
-
-# MayheM-Sec Added: clean up child scan processes on every normal GUI exit.
 atexit.register(STATE.stop)
 
 
@@ -129,55 +141,40 @@ HTML = r"""<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BlackPort | MayheM-Sec</title>
 <style>
-:root{--bg:#090b10;--panel:#11151d;--panel2:#171c26;--line:#262d3a;--text:#edf2f7;--muted:#8e9aab;--accent:#e5e7eb;--good:#7ee787;--warn:#f2cc60;--bad:#ff7b72}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-header{display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid var(--line);background:#0c0f15;position:sticky;top:0;z-index:3}
-.brand{font-weight:800;letter-spacing:.08em}.brand small{display:block;font-weight:500;letter-spacing:.02em;color:var(--muted);margin-top:3px}.status{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}.dot{width:9px;height:9px;border-radius:50%;background:var(--good)}
-main{max-width:1180px;margin:0 auto;padding:28px}.grid{display:grid;grid-template-columns:360px 1fr;gap:22px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.panel h2{margin:0 0 6px;font-size:18px}.panel p{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 18px}
-label{display:block;color:#c8d0dc;font-size:13px;margin:14px 0 7px}input,select{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:11px 12px;outline:none}input:focus,select:focus{border-color:#697386}
-.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.buttons{display:flex;gap:10px;margin-top:18px}.btn{border:0;border-radius:9px;padding:11px 14px;font-weight:700;cursor:pointer}.primary{background:var(--accent);color:#101318;flex:1}.secondary{background:#252c38;color:var(--text)}.danger{background:#3b1d22;color:#ffb4ae}.btn:disabled{opacity:.5;cursor:not-allowed}
-.notice{border-left:3px solid var(--warn);background:#181811;padding:12px 14px;border-radius:6px;color:#d8d1a5;font-size:13px;line-height:1.45;margin-top:18px}
-.console{background:#07090d;border:1px solid #222936;border-radius:10px;min-height:560px;max-height:70vh;overflow:auto;padding:16px;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;color:#c9d1d9}.console.empty{color:#657184}.meta{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.badge{font-size:12px;border:1px solid var(--line);padding:5px 8px;border-radius:999px;color:var(--muted)}
-footer{text-align:center;color:#657184;padding:10px 28px 30px;font-size:12px}@media(max-width:850px){.grid{grid-template-columns:1fr}.console{min-height:420px}header{padding:16px 18px}main{padding:18px}}
+:root{--bg:#090b10;--panel:#11151d;--panel2:#171c26;--line:#29303d;--text:#eef2f7;--muted:#93a0b2;--good:#7ee787;--warn:#f2cc60;--bad:#ff7b72}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif}header{display:flex;justify-content:space-between;align-items:center;padding:20px 28px;border-bottom:1px solid var(--line);background:#0d1016}.brand{font-weight:800;letter-spacing:.09em}.brand small{display:block;margin-top:3px;color:var(--muted);font-weight:500;letter-spacing:.01em}.local{font-size:13px;color:var(--muted)}main{max-width:1220px;margin:auto;padding:28px}.grid{display:grid;grid-template-columns:390px 1fr;gap:22px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}.panel h2{margin:0 0 6px;font-size:18px}.panel p{margin:0 0 18px;color:var(--muted);font-size:14px;line-height:1.5}label{display:block;margin:14px 0 7px;color:#cbd3df;font-size:13px}input,select{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel2);color:var(--text)}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.buttons{display:flex;gap:10px;margin-top:18px}.btn{border:0;border-radius:9px;padding:11px 14px;font-weight:700;cursor:pointer}.primary{background:#e5e7eb;color:#11151d;flex:1}.secondary{background:#252d39;color:var(--text)}.danger{background:#3a1d22;color:#ffb4ae}.btn:disabled{opacity:.5;cursor:not-allowed}.notice{margin-top:18px;border-left:3px solid var(--warn);padding:12px 14px;background:#181811;color:#d8d1a5;border-radius:6px;font-size:13px;line-height:1.5}.console{min-height:570px;max-height:72vh;overflow:auto;background:#07090d;border:1px solid #222936;border-radius:10px;padding:16px;white-space:pre-wrap;font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#c9d1d9}.meta{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.badge{border:1px solid var(--line);padding:5px 8px;border-radius:999px;color:var(--muted);font-size:12px}.hint{font-size:12px;color:var(--muted);margin-top:6px}footer{text-align:center;padding:8px 20px 28px;color:#657184;font-size:12px}@media(max-width:880px){.grid{grid-template-columns:1fr}.console{min-height:420px}main{padding:18px}}
 </style>
 </head>
 <body>
-<header><div class="brand">BLACKPORT<small>MayheM-Sec local interface</small></div><div class="status"><span class="dot"></span>Local only · 127.0.0.1</div></header>
-<main>
-<div class="grid">
-<section class="panel">
-<h2>New scan</h2><p>Configure an authorized BlackPort scan. The GUI uses the same scanner entry point as the command line.</p>
+<header><div class="brand">BLACKPORT<small>MayheM-Sec local interface</small></div><div class="local">127.0.0.1 · local only</div></header>
+<main><div class="grid">
+<section class="panel"><h2>New scan</h2><p>Run BlackPort from the browser without exposing the interface to your LAN or the Internet.</p>
 <label for="target">Target</label><input id="target" placeholder="192.168.1.10 or 192.168.1.0/24" autocomplete="off">
-<div class="row"><div><label for="profile">Port profile</label><select id="profile"><option value="top-100">Top 100</option><option value="top-500">Top 500</option><option value="top-1000">Top 1000</option><option value="full">Full 1-65535</option></select></div><div><label for="mode">Scan mode</label><select id="mode"><option value="tcp">TCP connect</option><option value="syn">SYN</option></select></div></div>
+<div class="row"><div><label for="mode">Scan mode</label><select id="mode" onchange="syncProfiles()"><option value="tcp">TCP connect</option><option value="syn">SYN</option><option value="udp">UDP</option><option value="mixed">Mixed TCP + UDP</option></select></div><div><label for="profile">TCP profile</label><select id="profile"><option value="top-100">Top 100</option><option value="top-500">Top 500</option><option value="top-1000">Top 1000</option><option value="full">Full</option></select></div></div>
+<div id="udpRow"><label for="udpProfile">UDP profile</label><select id="udpProfile"><option value="top-25">Top 25</option><option value="top-50">Top 50</option><option value="top-100">Top 100</option><option value="full">Full</option></select><div class="hint">UDP uses conservative state classification. No response is reported as open|filtered, not automatically open.</div></div>
 <div class="buttons"><button id="scan" class="btn primary" onclick="startScan()">Start scan</button><button id="stop" class="btn danger" onclick="stopScan()" disabled>Stop</button></div>
-<div class="notice">Only scan systems you own or are explicitly authorized to test. SYN mode may require elevated privileges on the computer running BlackPort.</div>
-<div class="buttons"><button class="btn secondary" onclick="shutdownApp()">Shut down BlackPort</button></div>
-</section>
-<section class="panel">
-<div class="meta"><div><h2>Live output</h2><p id="summary">No scan running.</p></div><span class="badge" id="runState">IDLE</span></div>
-<div id="console" class="console empty">BlackPort is ready.</div>
-</section>
-</div>
-</main>
-<footer>BlackPort upstream work remains credited to its original author. Interface additions are marked MayheM-Sec Added.</footer>
+<div class="notice">Only scan systems you own or are explicitly authorized to test. SYN mode may require elevated privileges. Full UDP scans can take significantly longer than TCP scans.</div>
+<div class="buttons"><button class="btn secondary" onclick="shutdownApp()">Shut down BlackPort</button></div></section>
+<section class="panel"><div class="meta"><div><h2>Live output</h2><p id="summary">No scan running.</p></div><span id="runState" class="badge">IDLE</span></div><div id="console" class="console">BlackPort is ready.</div></section>
+</div></main>
+<footer>Original BlackPort work remains credited upstream. Fork-specific changes are marked MayheM-Sec Added.</footer>
 <script>
-const el=id=>document.getElementById(id);
-let lastText="";
-async function api(path,body){const r=await fetch(path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});const data=await r.json();if(!r.ok)throw new Error(data.error||"Request failed");return data}
-async function startScan(){try{await api("/api/scan",{target:el("target").value.trim(),profile:el("profile").value,mode:el("mode").value});await refresh()}catch(e){alert(e.message)}}
+const el=id=>document.getElementById(id);let lastText="";
+async function api(path,body){const r=await fetch(path,{method:body?"POST":"GET",headers:{"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");return d}
+function syncProfiles(){const m=el("mode").value;el("profile").disabled=(m==="udp");el("udpProfile").disabled=(m==="tcp"||m==="syn");}
+async function startScan(){try{await api("/api/scan",{target:el("target").value.trim(),mode:el("mode").value,tcp_profile:el("profile").value,udp_profile:el("udpProfile").value});await refresh()}catch(e){alert(e.message)}}
 async function stopScan(){try{await api("/api/stop",{});await refresh()}catch(e){alert(e.message)}}
-async function shutdownApp(){if(!confirm("Stop any active scan and shut down the local BlackPort GUI?"))return;try{await api("/api/shutdown",{});document.body.innerHTML='<main><section class="panel"><h2>BlackPort stopped</h2><p>The local GUI connection has been closed. You can close this tab.</p></section></main>'}catch(e){}}
-async function refresh(){try{const s=await api("/api/status");el("scan").disabled=s.running;el("stop").disabled=!s.running;el("runState").textContent=s.running?"RUNNING":(s.return_code===0?"COMPLETE":(s.return_code===null?"IDLE":"STOPPED"));el("summary").textContent=s.running?"Scan in progress…":(s.started_at?"Last scan finished.":"No scan running.");const text=(s.output||[]).join("\n")||"BlackPort is ready.";if(text!==lastText){const c=el("console");c.textContent=text;c.classList.toggle("empty",!(s.output||[]).length);c.scrollTop=c.scrollHeight;lastText=text}}catch(e){el("runState").textContent="OFFLINE"}}
-setInterval(refresh,900);refresh();
+async function shutdownApp(){if(!confirm("Stop any active scan and shut down the local BlackPort GUI?"))return;try{await api("/api/shutdown",{});document.body.innerHTML='<main><section class="panel"><h2>BlackPort stopped</h2><p>The localhost listener is closed. You can close this tab.</p></section></main>'}catch(e){}}
+async function refresh(){try{const s=await api("/api/status");el("scan").disabled=s.running;el("stop").disabled=!s.running;el("runState").textContent=s.running?"RUNNING":(s.return_code===0?"COMPLETE":(s.return_code===null?"IDLE":"STOPPED"));el("summary").textContent=s.running?"Scan in progress…":(s.started_at?"Last scan finished.":"No scan running.");const text=(s.output||[]).join("\n")||"BlackPort is ready.";if(text!==lastText){const c=el("console");c.textContent=text;c.scrollTop=c.scrollHeight;lastText=text}}catch(e){el("runState").textContent="OFFLINE"}}
+syncProfiles();setInterval(refresh,900);refresh();
 </script>
-</body>
-</html>"""
+</body></html>"""
 
 
 class Handler(BaseHTTPRequestHandler):
     """MayheM-Sec Added: minimal local API and dashboard handler."""
 
-    server_version = "BlackPortGUI/1.0"
+    server_version = "BlackPortGUI/2.0"
 
     def log_message(self, fmt: str, *args) -> None:
         return
@@ -236,34 +233,35 @@ class Handler(BaseHTTPRequestHandler):
 
     def _start_scan(self, payload: dict) -> None:
         target = str(payload.get("target", "")).strip()
-        profile = str(payload.get("profile", "top-100"))
         mode = str(payload.get("mode", "tcp")).lower()
+        tcp_profile = str(payload.get("tcp_profile", "top-100"))
+        udp_profile = str(payload.get("udp_profile", "top-25"))
 
         if not target or len(target) > 253 or not HOST_RE.fullmatch(target):
             raise ValueError("Enter a valid IP address, hostname, or CIDR target")
-        if profile not in PROFILES:
-            raise ValueError("Unknown scan profile")
         if mode not in MODES:
             raise ValueError("Unknown scan mode")
+        if tcp_profile not in TCP_PROFILES:
+            raise ValueError("Unknown TCP profile")
+        if udp_profile not in UDP_PROFILES:
+            raise ValueError("Unknown UDP profile")
 
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
         command = [
             sys.executable,
-            str(ROOT / "main.py"),
+            str(ROOT / "mayhem_scan.py"),
             target,
-            PROFILES[profile],
-            "--output-dir",
-            str(REPORT_DIR),
+            "--mode", mode,
+            "--tcp-profile", tcp_profile,
+            "--udp-profile", udp_profile,
+            "--output-dir", str(REPORT_DIR),
         ]
-        if mode == "syn":
-            command.append("--syn")
-
         STATE.start(command)
         self._json({"ok": True, "command": command})
 
 
 def run_gui(port: int = DEFAULT_PORT, open_browser: bool = True) -> None:
-    """MayheM-Sec Added: run BlackPort on localhost until explicitly closed."""
+    """MayheM-Sec Added: run BlackPort locally until explicitly closed."""
     server = ThreadingHTTPServer((HOST, port), Handler)
     server.daemon_threads = True
     url = f"http://{HOST}:{port}"
@@ -293,7 +291,6 @@ def main() -> None:
     if not 1024 <= args.port <= 65535:
         parser.error("--port must be between 1024 and 65535")
 
-    # MayheM-Sec Added: make SIGTERM follow the same cleanup path as Ctrl+C.
     if hasattr(signal, "SIGTERM"):
         signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
 
