@@ -262,6 +262,10 @@ BlackPort was originally created by **Matthew Valdez** (`mkingv92`). This fork p
 
 ### AttackIQ
 
+#### Breach & Attack Simulation
+**AttackIQ** • Issued September 2026  
+[![Verify on Credly](https://img.shields.io/badge/Verify-Credly-168BFF?style=for-the-badge&logo=credly&logoColor=white)](https://www.credly.com/badges/de4fae36-1f0a-4fad-bd2f-82c23f3fb135/public_url)
+
 #### Foundations of Purple Teaming
 **AttackIQ** • Issued September 2026  
 [![Verify on Credly](https://img.shields.io/badge/Verify-Credly-168BFF?style=for-the-badge&logo=credly&logoColor=white)](https://www.credly.com/badges/7e67c167-c9f0-42a4-a97a-31d6a2de57ad/public_url)
