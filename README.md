@@ -262,6 +262,10 @@ BlackPort was originally created by **Matthew Valdez** (`mkingv92`). This fork p
 
 ### AttackIQ
 
+#### Intermediate Purple Teaming
+**AttackIQ** • Issued September 2026  
+[![Verify on Credly](https://img.shields.io/badge/Verify-Credly-168BFF?style=for-the-badge&logo=credly&logoColor=white)](https://www.credly.com/badges/ff5256c3-e2bc-42cb-a901-9f29d7c5e914)
+
 #### Operationalizing MITRE ATT&CK v19
 **AttackIQ** • Issued September 2026  
 [![Verify on Credly](https://img.shields.io/badge/Verify-Credly-168BFF?style=for-the-badge&logo=credly&logoColor=white)](https://www.credly.com/badges/95934f21-c54a-4a14-9045-d325fc2e6f2f/public_url)
